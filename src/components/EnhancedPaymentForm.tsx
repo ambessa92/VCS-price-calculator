@@ -31,6 +31,8 @@ export default function EnhancedPaymentForm(props: EnhancedPaymentFormProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [paypalError, setPaypalError] = useState<string | null>(null);
   const [loadAttempts, setLoadAttempts] = useState(0);
+  const [diagnostics, setDiagnostics] = useState<string[]>([]);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const paypalRef = useRef<HTMLDivElement>(null);
 
   // Get PayPal Client ID from environment variables
@@ -39,75 +41,122 @@ export default function EnhancedPaymentForm(props: EnhancedPaymentFormProps) {
   // Only use demo mode if absolutely no Client ID is provided
   const isDemoMode = !PAYPAL_CLIENT_ID || PAYPAL_CLIENT_ID.trim() === '';
 
+  const addDiagnostic = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setDiagnostics(prev => [...prev, `[${timestamp}] ${message}`]);
+    console.log(`PayPal Diagnostic: ${message}`);
+  };
+
   // Debug logging
   useEffect(() => {
-    console.log('=== PayPal Configuration ===');
-    console.log('Client ID present:', !!PAYPAL_CLIENT_ID);
-    console.log('Client ID length:', PAYPAL_CLIENT_ID?.length || 0);
-    console.log('Demo mode:', isDemoMode);
-    console.log('============================');
+    addDiagnostic('=== PayPal Configuration ===');
+    addDiagnostic(`Client ID present: ${!!PAYPAL_CLIENT_ID}`);
+    addDiagnostic(`Client ID length: ${PAYPAL_CLIENT_ID?.length || 0}`);
+    addDiagnostic(`Client ID preview: ${PAYPAL_CLIENT_ID ? PAYPAL_CLIENT_ID.substring(0, 10) + '...' : 'None'}`);
+    addDiagnostic(`Demo mode: ${isDemoMode}`);
+    addDiagnostic('============================');
   }, [PAYPAL_CLIENT_ID, isDemoMode]);
+
+  const testPayPalURL = async () => {
+    if (!PAYPAL_CLIENT_ID) return false;
+
+    try {
+      addDiagnostic('Testing PayPal SDK URL accessibility...');
+      const testUrl = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&currency=USD`;
+
+      // Try to fetch the URL to see if it's accessible
+      const response = await fetch(testUrl, {
+        method: 'HEAD',
+        mode: 'no-cors' // This will avoid CORS issues for testing
+      });
+
+      addDiagnostic('PayPal URL test completed (no-cors mode)');
+      return true;
+    } catch (error) {
+      addDiagnostic(`PayPal URL test failed: ${error}`);
+      return false;
+    }
+  };
 
   const loadPayPalScript = async () => {
     if (isDemoMode || loadAttempts >= 3) return;
 
     try {
-      console.log(`Loading PayPal SDK (attempt ${loadAttempts + 1})...`);
+      addDiagnostic(`Loading PayPal SDK (attempt ${loadAttempts + 1}/3)...`);
+
+      // Test URL accessibility first
+      await testPayPalURL();
 
       // Remove any existing PayPal scripts
       const existingScripts = document.querySelectorAll('script[src*="paypal.com"]');
-      existingScripts.forEach(script => script.remove());
+      if (existingScripts.length > 0) {
+        addDiagnostic(`Removing ${existingScripts.length} existing PayPal scripts`);
+        existingScripts.forEach(script => script.remove());
+      }
 
       // Clear any existing PayPal objects
       if (window.paypal) {
+        addDiagnostic('Clearing existing PayPal object');
         delete window.paypal;
       }
 
       const script = document.createElement('script');
-      script.src = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&currency=USD&intent=capture&components=buttons`;
+      const paypalUrl = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&currency=USD&intent=capture&components=buttons`;
+
+      addDiagnostic(`PayPal SDK URL: ${paypalUrl.substring(0, 50)}...`);
+
+      script.src = paypalUrl;
       script.async = true;
       script.crossOrigin = 'anonymous';
+      script.type = 'text/javascript';
 
       const loadPromise = new Promise((resolve, reject) => {
         script.onload = () => {
-          console.log('PayPal SDK loaded successfully');
+          addDiagnostic('PayPal SDK script loaded successfully');
           resolve(true);
         };
 
         script.onerror = (error) => {
-          console.error('PayPal SDK load error:', error);
-          reject(new Error('Failed to load PayPal SDK'));
+          addDiagnostic(`PayPal SDK script load error: ${error}`);
+          reject(new Error('Failed to load PayPal SDK script'));
         };
 
-        // Timeout after 15 seconds
+        // Timeout after 20 seconds
         setTimeout(() => {
+          addDiagnostic('PayPal SDK load timeout (20 seconds)');
           reject(new Error('PayPal SDK load timeout'));
-        }, 15000);
+        }, 20000);
       });
 
+      addDiagnostic('Adding PayPal script to document head');
       document.head.appendChild(script);
       await loadPromise;
 
+      addDiagnostic('Waiting for PayPal object initialization...');
       // Wait a moment for PayPal to initialize
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
       if (window.paypal) {
+        addDiagnostic('PayPal object found in window - SDK ready!');
         setIsPayPalLoaded(true);
         setPaypalError(null);
-        console.log('PayPal SDK ready');
       } else {
+        addDiagnostic('PayPal object NOT found in window after loading');
         throw new Error('PayPal SDK loaded but window.paypal not available');
       }
 
     } catch (error) {
-      console.error('PayPal load error:', error);
+      addDiagnostic(`PayPal load error: ${error}`);
       setLoadAttempts(prev => prev + 1);
 
       if (loadAttempts < 2) {
+        addDiagnostic('Retrying in 4 seconds...');
         setPaypalError('Retrying PayPal connection...');
-        setTimeout(() => loadPayPalScript(), 3000);
+        setTimeout(() => loadPayPalScript(), 4000);
       } else {
-        setPaypalError('Failed to connect to PayPal. Please refresh the page and try again.');
+        addDiagnostic('Max attempts reached - PayPal loading failed');
+        setPaypalError('Failed to connect to PayPal. This may be due to network issues or an invalid Client ID.');
+        setShowDiagnostics(true);
       }
     }
   };
@@ -121,7 +170,7 @@ export default function EnhancedPaymentForm(props: EnhancedPaymentFormProps) {
   const initializePayPalButtons = () => {
     if (!window.paypal || !paypalRef.current) return;
 
-    console.log('Initializing PayPal buttons...');
+    addDiagnostic('Initializing PayPal buttons...');
     paypalRef.current.innerHTML = '';
 
     try {
@@ -134,7 +183,7 @@ export default function EnhancedPaymentForm(props: EnhancedPaymentFormProps) {
           height: 45
         },
         createOrder: (data: any, actions: any) => {
-          console.log('Creating PayPal order for amount:', props.amount);
+          addDiagnostic(`Creating PayPal order for amount: $${props.amount}`);
           return actions.order.create({
             purchase_units: [{
               amount: {
@@ -154,33 +203,34 @@ export default function EnhancedPaymentForm(props: EnhancedPaymentFormProps) {
           });
         },
         onApprove: async (data: any, actions: any) => {
-          console.log('PayPal payment approved:', data.orderID);
+          addDiagnostic(`PayPal payment approved: ${data.orderID}`);
           setIsProcessing(true);
 
           try {
             const order = await actions.order.capture();
-            console.log('Payment captured successfully:', order);
+            addDiagnostic('Payment captured successfully');
             props.onPaymentSuccess();
           } catch (error) {
-            console.error('Payment capture error:', error);
+            addDiagnostic(`Payment capture error: ${error}`);
             props.onPaymentError?.('Payment processing failed');
           } finally {
             setIsProcessing(false);
           }
         },
         onError: (err: any) => {
-          console.error('PayPal error:', err);
+          addDiagnostic(`PayPal button error: ${err}`);
           setPaypalError('Payment error occurred. Please try again.');
           setIsProcessing(false);
         },
         onCancel: (data: any) => {
-          console.log('Payment cancelled:', data);
+          addDiagnostic('Payment cancelled by user');
           setIsProcessing(false);
         }
       }).render(paypalRef.current);
 
+      addDiagnostic('PayPal buttons rendered successfully');
     } catch (error) {
-      console.error('PayPal button initialization error:', error);
+      addDiagnostic(`PayPal button initialization error: ${error}`);
       setPaypalError('Failed to initialize PayPal buttons');
     }
   };
@@ -200,13 +250,25 @@ export default function EnhancedPaymentForm(props: EnhancedPaymentFormProps) {
   };
 
   const handleRetry = () => {
+    addDiagnostic('User requested retry - resetting PayPal');
     setPaypalError(null);
     setIsPayPalLoaded(false);
     setLoadAttempts(0);
+    setDiagnostics([]);
+    setShowDiagnostics(false);
 
+    // Small delay then retry
     setTimeout(() => {
-      window.location.reload();
-    }, 500);
+      loadPayPalScript();
+    }, 1000);
+  };
+
+  const handleForceDemo = () => {
+    addDiagnostic('User forced demo mode');
+    setPaypalError(null);
+    setIsPayPalLoaded(false);
+    // Temporarily override demo mode for this session
+    handleDemoPayment();
   };
 
   return (
@@ -222,7 +284,7 @@ export default function EnhancedPaymentForm(props: EnhancedPaymentFormProps) {
         </div>
       )}
 
-      {/* Error Display */}
+      {/* Error Display with Diagnostics */}
       {paypalError && !isDemoMode && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
           <p className="text-red-800 text-sm">
@@ -235,7 +297,29 @@ export default function EnhancedPaymentForm(props: EnhancedPaymentFormProps) {
             >
               Retry PayPal Loading
             </button>
+            <button
+              onClick={() => setShowDiagnostics(!showDiagnostics)}
+              className="text-blue-600 underline text-sm hover:text-blue-800"
+            >
+              {showDiagnostics ? 'Hide' : 'Show'} Diagnostics
+            </button>
+            <button
+              onClick={handleForceDemo}
+              className="text-gray-600 underline text-sm hover:text-gray-800"
+            >
+              Use Demo Payment
+            </button>
           </div>
+
+          {/* Diagnostics Panel */}
+          {showDiagnostics && (
+            <div className="mt-3 bg-gray-100 border rounded p-2 text-xs font-mono">
+              <p className="font-bold mb-2">Diagnostic Log:</p>
+              {diagnostics.map((log, index) => (
+                <p key={index} className="mb-1">{log}</p>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -264,6 +348,20 @@ export default function EnhancedPaymentForm(props: EnhancedPaymentFormProps) {
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-3"></div>
               <p className="text-gray-600">Loading PayPal...</p>
               <p className="text-sm text-gray-500">Attempt {loadAttempts + 1} of 3</p>
+              <button
+                onClick={() => setShowDiagnostics(!showDiagnostics)}
+                className="mt-2 text-xs text-gray-500 underline"
+              >
+                Show loading details
+              </button>
+
+              {showDiagnostics && diagnostics.length > 0 && (
+                <div className="mt-3 bg-gray-100 border rounded p-2 text-xs font-mono text-left max-h-32 overflow-y-auto">
+                  {diagnostics.slice(-5).map((log, index) => (
+                    <p key={index} className="mb-1">{log}</p>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
