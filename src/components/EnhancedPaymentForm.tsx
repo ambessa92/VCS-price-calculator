@@ -35,137 +35,13 @@ export default function EnhancedPaymentForm(props: EnhancedPaymentFormProps) {
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const paypalRef = useRef<HTMLDivElement>(null);
 
-  // Get PayPal Client ID from environment variables
-  const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID;
-
-  // Only use demo mode if absolutely no Client ID is provided
-  const isDemoMode = !PAYPAL_CLIENT_ID || PAYPAL_CLIENT_ID.trim() === '';
-
   const addDiagnostic = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
     setDiagnostics(prev => [...prev, `[${timestamp}] ${message}`]);
     console.log(`PayPal Diagnostic: ${message}`);
   };
 
-  // Debug logging
-  useEffect(() => {
-    addDiagnostic('=== PayPal Configuration ===');
-    addDiagnostic(`Client ID present: ${!!PAYPAL_CLIENT_ID}`);
-    addDiagnostic(`Client ID length: ${PAYPAL_CLIENT_ID?.length || 0}`);
-    addDiagnostic(`Client ID preview: ${PAYPAL_CLIENT_ID ? PAYPAL_CLIENT_ID.substring(0, 10) + '...' : 'None'}`);
-    addDiagnostic(`Demo mode: ${isDemoMode}`);
-    addDiagnostic('============================');
-  }, [PAYPAL_CLIENT_ID, isDemoMode]);
 
-  const testPayPalURL = async () => {
-    if (!PAYPAL_CLIENT_ID) return false;
-
-    try {
-      addDiagnostic('Testing PayPal SDK URL accessibility...');
-      const testUrl = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&currency=USD`;
-
-      // Try to fetch the URL to see if it's accessible
-      const response = await fetch(testUrl, {
-        method: 'HEAD',
-        mode: 'no-cors' // This will avoid CORS issues for testing
-      });
-
-      addDiagnostic('PayPal URL test completed (no-cors mode)');
-      return true;
-    } catch (error) {
-      addDiagnostic(`PayPal URL test failed: ${error}`);
-      return false;
-    }
-  };
-
-  const loadPayPalScript = async () => {
-    if (isDemoMode || loadAttempts >= 3) return;
-
-    try {
-      addDiagnostic(`Loading PayPal SDK (attempt ${loadAttempts + 1}/3)...`);
-
-      // Test URL accessibility first
-      await testPayPalURL();
-
-      // Remove any existing PayPal scripts
-      const existingScripts = document.querySelectorAll('script[src*="paypal.com"]');
-      if (existingScripts.length > 0) {
-        addDiagnostic(`Removing ${existingScripts.length} existing PayPal scripts`);
-        existingScripts.forEach(script => script.remove());
-      }
-
-      // Clear any existing PayPal objects
-      if (window.paypal) {
-        addDiagnostic('Clearing existing PayPal object');
-        delete window.paypal;
-      }
-
-      const script = document.createElement('script');
-      const paypalUrl = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&currency=USD&intent=capture&components=buttons`;
-
-      addDiagnostic(`PayPal SDK URL: ${paypalUrl.substring(0, 50)}...`);
-
-      script.src = paypalUrl;
-      script.async = true;
-      script.crossOrigin = 'anonymous';
-      script.type = 'text/javascript';
-
-      const loadPromise = new Promise((resolve, reject) => {
-        script.onload = () => {
-          addDiagnostic('PayPal SDK script loaded successfully');
-          resolve(true);
-        };
-
-        script.onerror = (error) => {
-          addDiagnostic(`PayPal SDK script load error: ${error}`);
-          reject(new Error('Failed to load PayPal SDK script'));
-        };
-
-        // Timeout after 20 seconds
-        setTimeout(() => {
-          addDiagnostic('PayPal SDK load timeout (20 seconds)');
-          reject(new Error('PayPal SDK load timeout'));
-        }, 20000);
-      });
-
-      addDiagnostic('Adding PayPal script to document head');
-      document.head.appendChild(script);
-      await loadPromise;
-
-      addDiagnostic('Waiting for PayPal object initialization...');
-      // Wait a moment for PayPal to initialize
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      if (window.paypal) {
-        addDiagnostic('PayPal object found in window - SDK ready!');
-        setIsPayPalLoaded(true);
-        setPaypalError(null);
-      } else {
-        addDiagnostic('PayPal object NOT found in window after loading');
-        throw new Error('PayPal SDK loaded but window.paypal not available');
-      }
-
-    } catch (error) {
-      addDiagnostic(`PayPal load error: ${error}`);
-      setLoadAttempts(prev => prev + 1);
-
-      if (loadAttempts < 2) {
-        addDiagnostic('Retrying in 4 seconds...');
-        setPaypalError('Retrying PayPal connection...');
-        setTimeout(() => loadPayPalScript(), 4000);
-      } else {
-        addDiagnostic('Max attempts reached - PayPal loading failed');
-        setPaypalError('Failed to connect to PayPal. This may be due to network issues or an invalid Client ID.');
-        setShowDiagnostics(true);
-      }
-    }
-  };
-
-  useEffect(() => {
-    if (!isDemoMode) {
-      loadPayPalScript();
-    }
-  }, [isDemoMode]);
 
   const initializePayPalButtons = () => {
     if (!window.paypal || !paypalRef.current) return;
