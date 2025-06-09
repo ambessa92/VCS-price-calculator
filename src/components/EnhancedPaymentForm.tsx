@@ -30,157 +30,198 @@ export default function EnhancedPaymentForm(props: EnhancedPaymentFormProps) {
   const [isPayPalLoaded, setIsPayPalLoaded] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [paypalError, setPaypalError] = useState<string | null>(null);
-  const [isPayPalReady, setIsPayPalReady] = useState(false);
+  const [loadAttempts, setLoadAttempts] = useState(0);
+  const [clientIdStatus, setClientIdStatus] = useState<string>('checking');
   const paypalRef = useRef<HTMLDivElement>(null);
-  const scriptLoadedRef = useRef(false);
 
   // Get PayPal Client ID from environment variables
   const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID;
-  const isDemoMode = !PAYPAL_CLIENT_ID || PAYPAL_CLIENT_ID === 'demo_client_id' || PAYPAL_CLIENT_ID === '';
 
-  // Debug: Log the Client ID status
+  // Validate Client ID format
+  const isValidClientId = (clientId: string) => {
+    return clientId &&
+           clientId.length > 20 &&
+           (clientId.startsWith('AQ') || clientId.startsWith('AT') || clientId.startsWith('AS')) &&
+           clientId !== 'demo_client_id';
+  };
+
+  const isDemoMode = !PAYPAL_CLIENT_ID || !isValidClientId(PAYPAL_CLIENT_ID);
+
+  // Debug and validate Client ID on component mount
   useEffect(() => {
-    console.log('PayPal Client ID:', PAYPAL_CLIENT_ID ? 'Present' : 'Missing');
-    console.log('Demo Mode:', isDemoMode);
+    console.log('=== PayPal Configuration Debug ===');
+    console.log('Client ID present:', !!PAYPAL_CLIENT_ID);
+    console.log('Client ID length:', PAYPAL_CLIENT_ID?.length || 0);
+    console.log('Client ID starts with:', PAYPAL_CLIENT_ID?.substring(0, 3) || 'None');
+    console.log('Is valid format:', isValidClientId(PAYPAL_CLIENT_ID || ''));
+    console.log('Demo mode:', isDemoMode);
+    console.log('================================');
+
+    if (PAYPAL_CLIENT_ID) {
+      setClientIdStatus('valid');
+    } else {
+      setClientIdStatus('missing');
+      setPaypalError('PayPal Client ID not found in environment variables');
+    }
   }, [PAYPAL_CLIENT_ID, isDemoMode]);
 
-  useEffect(() => {
-    if (isDemoMode || scriptLoadedRef.current) return;
+  const loadPayPalScript = async () => {
+    if (isDemoMode || loadAttempts >= 3) return;
 
-    const loadPayPalScript = () => {
-      // Check if script already exists
-      const existingScript = document.querySelector(`script[src*="paypal.com/sdk"]`);
-      if (existingScript) {
-        existingScript.remove();
+    try {
+      console.log(`Loading PayPal SDK (attempt ${loadAttempts + 1})...`);
+
+      // Remove any existing PayPal scripts
+      const existingScripts = document.querySelectorAll('script[src*="paypal.com"]');
+      existingScripts.forEach(script => script.remove());
+
+      // Clear any existing PayPal objects
+      if (window.paypal) {
+        delete window.paypal;
       }
 
-      console.log('Loading PayPal SDK...');
       const script = document.createElement('script');
-      script.src = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&currency=USD&components=buttons`;
+      script.src = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&currency=USD&intent=capture&components=buttons`;
       script.async = true;
-      script.defer = true;
+      script.crossOrigin = 'anonymous';
 
-      script.onload = () => {
-        console.log('PayPal SDK loaded successfully');
-        scriptLoadedRef.current = true;
-        setIsPayPalLoaded(true);
-        setPaypalError(null);
-      };
+      const loadPromise = new Promise((resolve, reject) => {
+        script.onload = () => {
+          console.log('PayPal SDK loaded successfully');
+          resolve(true);
+        };
 
-      script.onerror = (error) => {
-        console.error('Failed to load PayPal SDK:', error);
-        setPaypalError('Failed to load PayPal. Please refresh and try again.');
-        scriptLoadedRef.current = false;
-      };
+        script.onerror = (error) => {
+          console.error('PayPal SDK load error:', error);
+          reject(new Error('Failed to load PayPal SDK'));
+        };
+
+        // Timeout after 10 seconds
+        setTimeout(() => {
+          reject(new Error('PayPal SDK load timeout'));
+        }, 10000);
+      });
 
       document.head.appendChild(script);
-    };
+      await loadPromise;
 
-    // Add a small delay to ensure DOM is ready
-    const timer = setTimeout(loadPayPalScript, 100);
-    return () => clearTimeout(timer);
-  }, [PAYPAL_CLIENT_ID, isDemoMode]);
-
-  useEffect(() => {
-    if (!isDemoMode && isPayPalLoaded && paypalRef.current && !isPayPalReady) {
-      console.log('Initializing PayPal buttons...');
-
-      // Clear any existing content
-      paypalRef.current.innerHTML = '';
+      // Wait a moment for PayPal to initialize
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       if (window.paypal) {
-        try {
-          window.paypal.Buttons({
-            style: {
-              layout: 'vertical',
-              color: 'blue',
-              shape: 'rect',
-              label: 'pay',
-              height: 45
-            },
-            createOrder: (data: any, actions: any) => {
-              console.log('Creating PayPal order...');
-              return actions.order.create({
-                purchase_units: [{
-                  amount: {
-                    value: props.amount.toFixed(2),
-                    currency_code: 'USD'
-                  },
-                  description: `${props.serviceDetails.serviceType} - ${props.serviceDetails.frequency}`,
-                  custom_id: `VCS_${Date.now()}`,
-                  invoice_id: `INV_${Date.now()}`
-                }],
-                application_context: {
-                  brand_name: 'VCS Cleaning Services',
-                  locale: 'en-US',
-                  user_action: 'PAY_NOW'
-                }
-              });
-            },
-            onApprove: async (data: any, actions: any) => {
-              console.log('PayPal payment approved, capturing...');
-              setIsProcessing(true);
-              try {
-                const order = await actions.order.capture();
-                console.log('PayPal payment successful:', order);
-                props.onPaymentSuccess();
-              } catch (error) {
-                console.error('PayPal capture error:', error);
-                props.onPaymentError?.('Payment processing failed. Please try again.');
-              } finally {
-                setIsProcessing(false);
-              }
-            },
-            onError: (err: any) => {
-              console.error('PayPal button error:', err);
-              setPaypalError('PayPal payment error. Please try again.');
-              props.onPaymentError?.('Payment error occurred');
-              setIsProcessing(false);
-            },
-            onCancel: (data: any) => {
-              console.log('PayPal payment cancelled:', data);
-              setIsProcessing(false);
-            }
-          }).render(paypalRef.current).then(() => {
-            console.log('PayPal buttons rendered successfully');
-            setIsPayPalReady(true);
-          }).catch((error: any) => {
-            console.error('PayPal render error:', error);
-            setPaypalError('Failed to load PayPal buttons. Please refresh the page.');
-          });
-        } catch (error) {
-          console.error('PayPal initialization error:', error);
-          setPaypalError('PayPal initialization failed. Please refresh the page.');
-        }
+        setIsPayPalLoaded(true);
+        setPaypalError(null);
+        console.log('PayPal SDK ready');
       } else {
-        console.error('PayPal SDK not available');
-        setPaypalError('PayPal is not available. Please refresh the page.');
+        throw new Error('PayPal SDK loaded but window.paypal not available');
+      }
+
+    } catch (error) {
+      console.error('PayPal load error:', error);
+      setLoadAttempts(prev => prev + 1);
+
+      if (loadAttempts < 2) {
+        setPaypalError('Retrying PayPal connection...');
+        setTimeout(() => loadPayPalScript(), 2000);
+      } else {
+        setPaypalError('Failed to connect to PayPal. Please check your internet connection and try again.');
       }
     }
-  }, [isDemoMode, isPayPalLoaded, props, isPayPalReady]);
+  };
+
+  useEffect(() => {
+    if (!isDemoMode && clientIdStatus === 'valid') {
+      loadPayPalScript();
+    }
+  }, [isDemoMode, clientIdStatus]);
+
+  const initializePayPalButtons = () => {
+    if (!window.paypal || !paypalRef.current) return;
+
+    console.log('Initializing PayPal buttons...');
+    paypalRef.current.innerHTML = '';
+
+    try {
+      window.paypal.Buttons({
+        style: {
+          layout: 'vertical',
+          color: 'blue',
+          shape: 'rect',
+          label: 'pay',
+          height: 45
+        },
+        createOrder: (data: any, actions: any) => {
+          console.log('Creating PayPal order for amount:', props.amount);
+          return actions.order.create({
+            purchase_units: [{
+              amount: {
+                value: props.amount.toFixed(2),
+                currency_code: 'USD'
+              },
+              description: `${props.serviceDetails.serviceType} - ${props.serviceDetails.frequency}`,
+              custom_id: `VCS_${Date.now()}`,
+              soft_descriptor: 'VCS Cleaning'
+            }],
+            application_context: {
+              brand_name: 'VCS Cleaning Services',
+              locale: 'en-US',
+              user_action: 'PAY_NOW',
+              shipping_preference: 'NO_SHIPPING'
+            }
+          });
+        },
+        onApprove: async (data: any, actions: any) => {
+          console.log('PayPal payment approved:', data.orderID);
+          setIsProcessing(true);
+
+          try {
+            const order = await actions.order.capture();
+            console.log('Payment captured successfully:', order);
+            props.onPaymentSuccess();
+          } catch (error) {
+            console.error('Payment capture error:', error);
+            props.onPaymentError?.('Payment processing failed');
+          } finally {
+            setIsProcessing(false);
+          }
+        },
+        onError: (err: any) => {
+          console.error('PayPal error:', err);
+          setPaypalError('Payment error occurred. Please try again.');
+          setIsProcessing(false);
+        },
+        onCancel: (data: any) => {
+          console.log('Payment cancelled:', data);
+          setIsProcessing(false);
+        }
+      }).render(paypalRef.current);
+
+    } catch (error) {
+      console.error('PayPal button initialization error:', error);
+      setPaypalError('Failed to initialize PayPal buttons');
+    }
+  };
+
+  useEffect(() => {
+    if (isPayPalLoaded && paypalRef.current) {
+      initializePayPalButtons();
+    }
+  }, [isPayPalLoaded, props.amount]);
 
   const handleDemoPayment = () => {
     setIsProcessing(true);
-    // Simulate payment processing
     setTimeout(() => {
       props.onPaymentSuccess();
       setIsProcessing(false);
     }, 2000);
   };
 
-  const retryPayPal = () => {
+  const handleRetry = () => {
     setPaypalError(null);
     setIsPayPalLoaded(false);
-    setIsPayPalReady(false);
-    scriptLoadedRef.current = false;
+    setLoadAttempts(0);
 
-    // Remove existing script
-    const existingScript = document.querySelector(`script[src*="paypal.com/sdk"]`);
-    if (existingScript) {
-      existingScript.remove();
-    }
-
-    // Reload after a short delay
+    // Force a complete reload
     setTimeout(() => {
       window.location.reload();
     }, 500);
@@ -190,28 +231,52 @@ export default function EnhancedPaymentForm(props: EnhancedPaymentFormProps) {
     <div className="bg-white border border-gray-200 rounded-lg p-6">
       <h3 className="text-lg font-semibold mb-4">Payment</h3>
 
+      {/* Debug Info */}
+      {import.meta.env.DEV && (
+        <div className="bg-gray-50 border rounded p-2 mb-4 text-xs">
+          <p><strong>Debug:</strong> Client ID Status: {clientIdStatus}</p>
+          <p>Demo Mode: {isDemoMode ? 'Yes' : 'No'}</p>
+          <p>Load Attempts: {loadAttempts}</p>
+        </div>
+      )}
+
+      {/* Demo Mode Warning */}
       {isDemoMode && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
           <p className="text-yellow-800 text-sm">
-            <strong>Demo Mode:</strong> Set VITE_PAYPAL_CLIENT_ID in environment variables for real payments.
+            <strong>Demo Mode:</strong> {
+              !PAYPAL_CLIENT_ID
+                ? 'PayPal Client ID not configured in environment variables.'
+                : 'Invalid PayPal Client ID format detected.'
+            }
           </p>
         </div>
       )}
 
-      {paypalError && (
+      {/* Error Display */}
+      {paypalError && !isDemoMode && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
           <p className="text-red-800 text-sm">
             <strong>Error:</strong> {paypalError}
           </p>
-          <button
-            onClick={retryPayPal}
-            className="mt-2 text-red-600 underline text-sm hover:text-red-800"
-          >
-            Retry PayPal Loading
-          </button>
+          <div className="mt-2 space-x-2">
+            <button
+              onClick={handleRetry}
+              className="text-red-600 underline text-sm hover:text-red-800"
+            >
+              Retry PayPal Loading
+            </button>
+            <button
+              onClick={() => setPaypalError(null)}
+              className="text-gray-600 underline text-sm hover:text-gray-800"
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
       )}
 
+      {/* Payment Details */}
       <div className="mb-4 space-y-2">
         <p><strong>Amount:</strong> ${props.amount.toFixed(2)}</p>
         <p><strong>Customer:</strong> {props.customerDetails.name}</p>
@@ -219,6 +284,7 @@ export default function EnhancedPaymentForm(props: EnhancedPaymentFormProps) {
         <p><strong>Frequency:</strong> {props.serviceDetails.frequency}</p>
       </div>
 
+      {/* Payment Options */}
       {isDemoMode ? (
         <button
           onClick={handleDemoPayment}
@@ -229,20 +295,23 @@ export default function EnhancedPaymentForm(props: EnhancedPaymentFormProps) {
         </button>
       ) : (
         <div>
+          {/* Loading State */}
           {!isPayPalLoaded && !paypalError && (
-            <div className="text-center py-4">
-              <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mb-2"></div>
-              <p className="text-gray-600">Loading PayPal...</p>
+            <div className="text-center py-8">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-3"></div>
+              <p className="text-gray-600">Connecting to PayPal...</p>
+              <p className="text-sm text-gray-500">Attempt {loadAttempts + 1} of 3</p>
             </div>
           )}
 
+          {/* PayPal Buttons */}
           {isPayPalLoaded && !paypalError && (
             <div>
-              <div ref={paypalRef} className="min-h-[45px] paypal-buttons"></div>
+              <div ref={paypalRef} className="paypal-buttons-container"></div>
               {isProcessing && (
-                <div className="text-center mt-2">
+                <div className="text-center mt-3 p-3 bg-blue-50 rounded">
                   <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
-                  <p className="text-sm text-gray-600 inline">Processing payment...</p>
+                  <span className="text-sm text-blue-700">Processing your payment...</span>
                 </div>
               )}
             </div>
