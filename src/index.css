@@ -1,0 +1,79 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary-color: #ddb550;
+  --primary-dark: #c69a3c;
+  --secondary-color: #854297;
+  --text-color: #2f2e2e;
+  --bg-color: #faf9f9;
+  --accent-color: #28a9bd;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Poppins', sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-color);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 600;
+}
+
+.btn-primary {
+  background-color: var(--primary-color);
+  color: var(--text-color);
+  font-weight: 600;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.25rem;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  background-color: var(--primary-dark);
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+@layer base {
+  :root {
+    --background: 60 33% 98%;
+    --foreground: 200 6% 18%;
+    --card: 60 33% 98%;
+    --card-foreground: 200 6% 18%;
+    --popover: 60 33% 98%;
+    --popover-foreground: 200 6% 18%;
+    --primary: 43 65% 58%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 285 38% 43%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 43 9% 91%;
+    --muted-foreground: 200 5% 40%;
+    --accent: 188 64% 45%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 43 15% 84%;
+    --input: 43 15% 84%;
+    --ring: 43 65% 58%;
+    --radius: 0.5rem;
+  }
+}
