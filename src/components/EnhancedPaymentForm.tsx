@@ -31,38 +31,21 @@ export default function EnhancedPaymentForm(props: EnhancedPaymentFormProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [paypalError, setPaypalError] = useState<string | null>(null);
   const [loadAttempts, setLoadAttempts] = useState(0);
-  const [clientIdStatus, setClientIdStatus] = useState<string>('checking');
   const paypalRef = useRef<HTMLDivElement>(null);
 
   // Get PayPal Client ID from environment variables
   const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID;
 
-  // Validate Client ID format
-  const isValidClientId = (clientId: string) => {
-    return clientId &&
-           clientId.length > 20 &&
-           (clientId.startsWith('AQ') || clientId.startsWith('AT') || clientId.startsWith('AS')) &&
-           clientId !== 'demo_client_id';
-  };
+  // Only use demo mode if absolutely no Client ID is provided
+  const isDemoMode = !PAYPAL_CLIENT_ID || PAYPAL_CLIENT_ID.trim() === '';
 
-  const isDemoMode = !PAYPAL_CLIENT_ID || !isValidClientId(PAYPAL_CLIENT_ID);
-
-  // Debug and validate Client ID on component mount
+  // Debug logging
   useEffect(() => {
-    console.log('=== PayPal Configuration Debug ===');
+    console.log('=== PayPal Configuration ===');
     console.log('Client ID present:', !!PAYPAL_CLIENT_ID);
     console.log('Client ID length:', PAYPAL_CLIENT_ID?.length || 0);
-    console.log('Client ID starts with:', PAYPAL_CLIENT_ID?.substring(0, 3) || 'None');
-    console.log('Is valid format:', isValidClientId(PAYPAL_CLIENT_ID || ''));
     console.log('Demo mode:', isDemoMode);
-    console.log('================================');
-
-    if (PAYPAL_CLIENT_ID) {
-      setClientIdStatus('valid');
-    } else {
-      setClientIdStatus('missing');
-      setPaypalError('PayPal Client ID not found in environment variables');
-    }
+    console.log('============================');
   }, [PAYPAL_CLIENT_ID, isDemoMode]);
 
   const loadPayPalScript = async () => {
@@ -96,17 +79,17 @@ export default function EnhancedPaymentForm(props: EnhancedPaymentFormProps) {
           reject(new Error('Failed to load PayPal SDK'));
         };
 
-        // Timeout after 10 seconds
+        // Timeout after 15 seconds
         setTimeout(() => {
           reject(new Error('PayPal SDK load timeout'));
-        }, 10000);
+        }, 15000);
       });
 
       document.head.appendChild(script);
       await loadPromise;
 
       // Wait a moment for PayPal to initialize
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
       if (window.paypal) {
         setIsPayPalLoaded(true);
@@ -122,18 +105,18 @@ export default function EnhancedPaymentForm(props: EnhancedPaymentFormProps) {
 
       if (loadAttempts < 2) {
         setPaypalError('Retrying PayPal connection...');
-        setTimeout(() => loadPayPalScript(), 2000);
+        setTimeout(() => loadPayPalScript(), 3000);
       } else {
-        setPaypalError('Failed to connect to PayPal. Please check your internet connection and try again.');
+        setPaypalError('Failed to connect to PayPal. Please refresh the page and try again.');
       }
     }
   };
 
   useEffect(() => {
-    if (!isDemoMode && clientIdStatus === 'valid') {
+    if (!isDemoMode) {
       loadPayPalScript();
     }
-  }, [isDemoMode, clientIdStatus]);
+  }, [isDemoMode]);
 
   const initializePayPalButtons = () => {
     if (!window.paypal || !paypalRef.current) return;
@@ -221,7 +204,6 @@ export default function EnhancedPaymentForm(props: EnhancedPaymentFormProps) {
     setIsPayPalLoaded(false);
     setLoadAttempts(0);
 
-    // Force a complete reload
     setTimeout(() => {
       window.location.reload();
     }, 500);
@@ -229,26 +211,13 @@ export default function EnhancedPaymentForm(props: EnhancedPaymentFormProps) {
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-6">
-      <h3 className="text-lg font-semibold mb-4">Payment</h3>
+      <h3 className="text-lg font-semibold mb-4">Complete Payment</h3>
 
-      {/* Debug Info */}
-      {import.meta.env.DEV && (
-        <div className="bg-gray-50 border rounded p-2 mb-4 text-xs">
-          <p><strong>Debug:</strong> Client ID Status: {clientIdStatus}</p>
-          <p>Demo Mode: {isDemoMode ? 'Yes' : 'No'}</p>
-          <p>Load Attempts: {loadAttempts}</p>
-        </div>
-      )}
-
-      {/* Demo Mode Warning */}
+      {/* Only show demo warning if truly no Client ID */}
       {isDemoMode && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
           <p className="text-yellow-800 text-sm">
-            <strong>Demo Mode:</strong> {
-              !PAYPAL_CLIENT_ID
-                ? 'PayPal Client ID not configured in environment variables.'
-                : 'Invalid PayPal Client ID format detected.'
-            }
+            <strong>Demo Mode:</strong> PayPal Client ID not configured. Add VITE_PAYPAL_CLIENT_ID to environment variables for real payments.
           </p>
         </div>
       )}
@@ -265,12 +234,6 @@ export default function EnhancedPaymentForm(props: EnhancedPaymentFormProps) {
               className="text-red-600 underline text-sm hover:text-red-800"
             >
               Retry PayPal Loading
-            </button>
-            <button
-              onClick={() => setPaypalError(null)}
-              className="text-gray-600 underline text-sm hover:text-gray-800"
-            >
-              Dismiss
             </button>
           </div>
         </div>
@@ -299,7 +262,7 @@ export default function EnhancedPaymentForm(props: EnhancedPaymentFormProps) {
           {!isPayPalLoaded && !paypalError && (
             <div className="text-center py-8">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-3"></div>
-              <p className="text-gray-600">Connecting to PayPal...</p>
+              <p className="text-gray-600">Loading PayPal...</p>
               <p className="text-sm text-gray-500">Attempt {loadAttempts + 1} of 3</p>
             </div>
           )}
@@ -307,7 +270,7 @@ export default function EnhancedPaymentForm(props: EnhancedPaymentFormProps) {
           {/* PayPal Buttons */}
           {isPayPalLoaded && !paypalError && (
             <div>
-              <div ref={paypalRef} className="paypal-buttons-container"></div>
+              <div ref={paypalRef} className="paypal-buttons-container min-h-[50px]"></div>
               {isProcessing && (
                 <div className="text-center mt-3 p-3 bg-blue-50 rounded">
                   <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
