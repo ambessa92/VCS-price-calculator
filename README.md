@@ -65,7 +65,7 @@ A professional cleaning service price calculator and booking system inspired by 
    ```
 
 3. **Set up environment variables**
-   
+
    Create a `.env` file in the root directory:
    ```env
    # Stripe Keys (get from https://dashboard.stripe.com/apikeys)
@@ -80,7 +80,7 @@ A professional cleaning service price calculator and booking system inspired by 
    ```
 
 5. **Open your browser**
-   
+
    Navigate to `http://localhost:5173` to see the application running.
 
 ## 🔧 Environment Variables
@@ -116,7 +116,7 @@ A professional cleaning service price calculator and booking system inspired by 
    - Functions directory: `netlify/functions`
 
 4. **Set environment variables**
-   
+
    In Netlify dashboard > Site settings > Environment variables:
    ```
    VITE_STRIPE_PUBLISHABLE_KEY=pk_test_your_key_here
@@ -124,7 +124,7 @@ A professional cleaning service price calculator and booking system inspired by 
    ```
 
 5. **Deploy**
-   
+
    Netlify will automatically build and deploy your site.
 
 ### Manual Deployment
@@ -248,4 +248,11 @@ This project was inspired by [Hellamaid](https://hellamaid.com), a professional 
 
 ---
 
-**Built with ❤️ using React, TypeScript, and Stripe**# Force new deployment to fix stuck post-processing
+**Built with ❤️ using React, TypeScript, and PayPal**
+
+## 🎉 New Payment System Features
+- 💳 PayPal Integration with user-controlled Client ID
+- 🎭 Demo Payment Mode for testing
+- 📝 Manual Payment with contact information
+
+*Updated: January 2025*
