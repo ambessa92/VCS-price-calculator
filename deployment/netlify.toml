@@ -1,0 +1,57 @@
+[images]
+  remote_images = ["https://source.unsplash.com/.*", "https://images.unsplash.com/.*", "https://ext.same-assets.com/.*", "https://ugc.same-assets.com/.*"]
+
+[build]
+  command = "bun run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "18"
+  # PayPal Configuration
+  VITE_PAYPAL_CLIENT_ID = "your-production-paypal-client-id"
+  PAYPAL_CLIENT_SECRET = "your-production-paypal-secret"
+  PAYPAL_ENVIRONMENT = "live"
+
+  # Apple Pay Configuration
+  VITE_APPLE_MERCHANT_ID = "merchant.hellamaid.com"
+  APPLE_PAY_MERCHANT_CERT_PATH = "/opt/build/certs/merchant.cert"
+  APPLE_PAY_MERCHANT_KEY_PATH = "/opt/build/certs/merchant.key"
+
+  # Google Pay Configuration
+  VITE_GOOGLE_MERCHANT_ID = "your-google-merchant-id"
+  VITE_GOOGLE_GATEWAY_MERCHANT_ID = "your-gateway-merchant-id"
+  GOOGLE_PAY_ENVIRONMENT = "PRODUCTION"
+
+  # EmailJS Configuration
+  VITE_EMAILJS_SERVICE_ID = "your_emailjs_service_id"
+  VITE_EMAILJS_TEMPLATE_ID = "your_emailjs_template_id"
+  VITE_EMAILJS_USER_ID = "your_emailjs_user_id"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# Optimize build processing
+[build.processing]
+  skip_processing = false
+
+# Headers for better caching
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "max-age=31536000, immutable"
+
+[[headers]]
+  for = "*.js"
+  [headers.values]
+    Cache-Control = "max-age=31536000, immutable"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
